@@ -6,7 +6,14 @@ class RedditScrollerBehavior {
   static MAX_SCROLLS = 250;
   static MAX_COMMENT_EXPANDS = 100;
 
-  static match(url) {
+  static init() {
+    return {
+      state: {},
+      opts: {}
+    };
+  }
+
+  static isMatch(url) {
     try {
       const urlObj = new URL(url);
       if (urlObj.hostname.startsWith('old.reddit.com')) {
@@ -14,12 +21,12 @@ class RedditScrollerBehavior {
       }
       return urlObj.hostname.includes('reddit.com') && urlObj.pathname.startsWith('/r/');
     } catch (e) {
-      console.error('[Reddit Behavior] Invalid URL provided to match function:', url, e);
+      console.error('[Reddit Behavior] Invalid URL provided to isMatch function:', url, e);
       return false;
     }
   }
 
-  async run(ctx) {
+  async* run(ctx) {
     console.log(`[Reddit Behavior] Starting on URL: ${ctx.url}`);
     try {
       await ctx.waitForElement('shreddit-app', 20000);
@@ -30,16 +37,17 @@ class RedditScrollerBehavior {
       const isCommentPage = /^\/r\/[^/]+\/comments\//.test(pathname);
       const isWikiPage = /^\/r\/[^/]+\/wiki\//.test(pathname);
       if (isCommentPage) {
-        await this.#expandComments(ctx);
+        yield* this.#expandComments(ctx);
       } else if (isWikiPage) {
-        await this.#handleWikiPage(ctx);
+        yield* this.#handleWikiPage(ctx);
       } else {
-        await this.#handleListingPage(ctx);
+        yield* this.#handleListingPage(ctx);
       }
       console.log('[Reddit Behavior] Behavior finished successfully.');
     } catch (error) {
       console.error('[Reddit Behavior] An error occurred during execution:', error);
     }
+    yield 'Reddit Scroller Behavior Complete';
   }
 
   async #wait(ms) {
@@ -92,7 +100,7 @@ class RedditScrollerBehavior {
     }, selector, textRegex.source, RedditScrollerBehavior.WAIT_MEDIUM);
   }
 
-  async #expandComments(ctx) {
+  async* #expandComments(ctx) {
     console.log('[Reddit Behavior] Comment page detected. Expanding all comments.');
     const loadMoreRegex = /(view|load) more comments/i;
     const moreRepliesRegex = /\d+ more repl(y|ies)/i;
@@ -105,11 +113,13 @@ class RedditScrollerBehavior {
       if (clickedCount > 0) {
         console.log(`[Reddit Behavior] Expanded ${clickedCount} main comment thread(s).`);
         clickedSomething = true;
+        yield `Expanded ${clickedCount} main comment thread(s).`;
       }
       clickedCount = await this.#clickAllVisible(ctx, 'button', moreRepliesRegex);
       if (clickedCount > 0) {
         console.log(`[Reddit Behavior] Expanded ${clickedCount} nested comment repl(y|ies).`);
         clickedSomething = true;
+        yield `Expanded ${clickedCount} nested comment repl(y|ies).`;
       }
       if (clickedSomething) {
         consecutiveFailures = 0;
@@ -127,7 +137,7 @@ class RedditScrollerBehavior {
     await ctx.scroll({ timeout: 60000, direction: 'down' });
   }
 
-  async #handleListingPage(ctx) {
+  async* #handleListingPage(ctx) {
     console.log('[Reddit Behavior] Listing page detected. Starting scroll to load posts.');
     let consecutiveScrollsWithNoNewPosts = 0;
     const maxConsecutiveFailures = 5;
@@ -136,6 +146,7 @@ class RedditScrollerBehavior {
         await ctx.scroll({ direction: 'down' });
         await this.#wait(RedditScrollerBehavior.WAIT_LONG);
         const newPostCount = await ctx.page.evaluate(() => new Set(Array.from(document.querySelectorAll('shreddit-post'), post => post.permalink)).size);
+        yield `Scroll ${i + 1}, found ${newPostCount} posts.`;
         console.log(`[Reddit Behavior] Scroll ${i + 1}/${RedditScrollerBehavior.MAX_SCROLLS}. Found ${newPostCount} unique posts so far.`);
         if (i > 0 && newPostCount === initialPostCount) {
             consecutiveScrollsWithNoNewPosts++;
@@ -152,9 +163,10 @@ class RedditScrollerBehavior {
     console.log(`[Reddit Behavior] Finished scrolling on listing page. Exposed a total of ${finalPostCount} posts for the crawler.`);
   }
 
-  async #handleWikiPage(ctx) {
+  async* #handleWikiPage(ctx) {
     console.log('[Reddit Behavior] Wiki page detected. Performing a full scroll.');
     await ctx.scroll({ timeout: 60000, direction: 'down' });
+    yield 'Scrolled wiki page';
     console.log('[Reddit Behavior] Wiki page scroll complete.');
   }
 }
