@@ -1,6 +1,11 @@
 class RedditBehavior {
   static id = 'reddit';
 
+  /**
+   * @desc Determines if this behavior should be run on the given URL.
+   * @param {string} url - The URL of the page to check.
+   * @returns {boolean} - True if the URL is a Reddit page, false otherwise.
+   */
   static isMatch(url) {
     try {
       const urlObj = new URL(url);
@@ -10,6 +15,11 @@ class RedditBehavior {
     }
   }
 
+  /**
+   * @desc Initializes the behavior's state and options.
+   * @param {object} options - The options for the behavior.
+   * @returns {object} - The initial state and options.
+   */
   static init(options) {
     return {
       state: {},
@@ -17,9 +27,9 @@ class RedditBehavior {
     };
   }
 
-  SCROLL_DURATION = 300000;
+  SCROLL_DURATION = 30000;
   MAX_COMMENT_EXPANSION_LOOPS = 20;
-  WAIT_TIMEOUT = 3000;
+  WAIT_TIMEOUT = 2500;
 
   constructor(page, extra) {
     this.page = page;
@@ -33,6 +43,7 @@ class RedditBehavior {
     try {
       await this.page.waitForSelector('#main-content', { timeout: 20000 });
       await this.page.waitForTimeout(this.WAIT_TIMEOUT);
+
       await this._closeModals();
 
       if (url.includes('/comments/')) {
@@ -41,7 +52,10 @@ class RedditBehavior {
         yield* this._handleListingPage(ctx);
       }
     } catch (error) {
-      console.error(`[Reddit Behavior] A critical error occurred on ${url}:`, error);
+      console.error(
+        '[Reddit Behavior] A critical error occurred during execution:',
+        error
+      );
     }
   }
 
@@ -53,10 +67,9 @@ class RedditBehavior {
 
     let newUrlsFound = 0;
     for (const url of postLinks) {
-      const absoluteUrl = new URL(url, this.page.url()).href;
-      if (!this.discoveredUrls.has(absoluteUrl)) {
-        this.discoveredUrls.add(absoluteUrl);
-        ctx.addUrl(absoluteUrl);
+      if (!this.discoveredUrls.has(url)) {
+        this.discoveredUrls.add(url);
+        ctx.addUrl(url);
         newUrlsFound++;
       }
     }
@@ -124,7 +137,6 @@ class RedditBehavior {
       } else {
         consecutiveFailures++;
         if (consecutiveFailures >= maxConsecutiveFailures) {
-          yield 'No more comment expansion buttons found.';
           break;
         }
         await this.page.waitForTimeout(1000);
@@ -136,7 +148,6 @@ class RedditBehavior {
     const closeButtonSelectors = [
       'button[aria-label="Close"]',
       'button:has-text("Continue")',
-      '[aria-label="Back to Top"]',
     ];
 
     for (const selector of closeButtonSelectors) {
