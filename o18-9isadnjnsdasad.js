@@ -1,9 +1,25 @@
 class RedditBehavior {
   static id = 'reddit';
 
-  SCROLL_DURATION = 30000;
+  static isMatch(url) {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname.endsWith('reddit.com');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static init(options) {
+    return {
+      state: {},
+      opts: {}
+    };
+  }
+
+  SCROLL_DURATION = 300000;
   MAX_COMMENT_EXPANSION_LOOPS = 20;
-  WAIT_TIMEOUT = 2500;
+  WAIT_TIMEOUT = 3000;
 
   constructor(page, extra) {
     this.page = page;
@@ -17,7 +33,6 @@ class RedditBehavior {
     try {
       await this.page.waitForSelector('#main-content', { timeout: 20000 });
       await this.page.waitForTimeout(this.WAIT_TIMEOUT);
-
       await this._closeModals();
 
       if (url.includes('/comments/')) {
@@ -26,10 +41,7 @@ class RedditBehavior {
         yield* this._handleListingPage(ctx);
       }
     } catch (error) {
-      console.error(
-        '[Reddit Behavior] A critical error occurred during execution:',
-        error
-      );
+      console.error(`[Reddit Behavior] A critical error occurred on ${url}:`, error);
     }
   }
 
@@ -41,9 +53,10 @@ class RedditBehavior {
 
     let newUrlsFound = 0;
     for (const url of postLinks) {
-      if (!this.discoveredUrls.has(url)) {
-        this.discoveredUrls.add(url);
-        ctx.addUrl(url);
+      const absoluteUrl = new URL(url, this.page.url()).href;
+      if (!this.discoveredUrls.has(absoluteUrl)) {
+        this.discoveredUrls.add(absoluteUrl);
+        ctx.addUrl(absoluteUrl);
         newUrlsFound++;
       }
     }
@@ -111,6 +124,7 @@ class RedditBehavior {
       } else {
         consecutiveFailures++;
         if (consecutiveFailures >= maxConsecutiveFailures) {
+          yield 'No more comment expansion buttons found.';
           break;
         }
         await this.page.waitForTimeout(1000);
@@ -122,6 +136,7 @@ class RedditBehavior {
     const closeButtonSelectors = [
       'button[aria-label="Close"]',
       'button:has-text("Continue")',
+      '[aria-label="Back to Top"]',
     ];
 
     for (const selector of closeButtonSelectors) {
